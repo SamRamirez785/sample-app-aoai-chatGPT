@@ -13,7 +13,7 @@ import { nord } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 import styles from './Chat.module.css'
 import Contoso from '../../assets/Contoso.svg'
-import epwuLogo from '../../assets/epwuLogo.svg'
+// import epwuLogo from '../../assets/epwuLogo.svg'
 
 import { XSSAllowTags } from '../../constants/sanatizeAllowables'
 
@@ -110,7 +110,7 @@ const Chat = () => {
 
   useEffect(() => {
     if (!appStateContext?.state.isLoading) {
-      setLogo(ui?.chat_logo || ui?.logo || epwuLogo)
+      setLogo(ui?.chat_logo || ui?.logo || Contoso)
     }
   }, [appStateContext?.state.isLoading])
 
@@ -935,7 +935,7 @@ const Chat = () => {
               </Stack>
               <QuestionInput
                 clearOnSend
-                placeholder="Type a new question..."
+                placeholder="Type a new TEST question..."
                 disabled={isLoading}
                 onSend={(question, id) => {
                   appStateContext?.state.isCosmosDBAvailable?.cosmosDB
