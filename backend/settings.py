@@ -42,8 +42,8 @@ class _UiSettings(BaseSettings):
     )
 
     title: str = "H2Know"
-    logo: Optional[str] = "/water.ico"
-    chat_logo: Optional[str] = "/water.ico"
+    logo: Optional[str] = "/water.svg"
+    chat_logo: Optional[str] = "/water.svg"
     chat_title: str = "Start Chatting with H2Know"
     chat_description: str = "This HR assistant is configured to answer your questions relating to any policy"
     favicon: str = "/water.ico"
