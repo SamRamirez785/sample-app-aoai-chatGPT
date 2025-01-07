@@ -12,7 +12,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { nord } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 import styles from './Chat.module.css'
-// import Contoso from '../../assets/Contoso.svg'
+import Contoso from '../../assets/Contoso.svg'
 import WaterLogo from '../../assets/water-fee-svgrepo.svg'
 // import epwuLogo from '../../assets/epwuLogo.svg'
 
@@ -111,7 +111,7 @@ const Chat = () => {
 
   useEffect(() => {
     if (!appStateContext?.state.isLoading) {
-      setLogo(ui?.chat_logo || ui?.logo || WaterLogo)
+      setLogo(ui?.chat_logo || ui?.logo || Contoso)
     }
   }, [appStateContext?.state.isLoading])
 
