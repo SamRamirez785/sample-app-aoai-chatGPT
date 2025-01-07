@@ -45,7 +45,7 @@ class _UiSettings(BaseSettings):
     logo: Optional[str] = None
     chat_logo: Optional[str] = None
     chat_title: str = "Start Chatting with H2know"
-    chat_description: str = "This HR chatbot is configured to answer your questions relating to any policy"
+    chat_description: str = "This HR assistant is configured to answer your questions relating to any policy"
     favicon: str = "/favicon.ico"
     show_share_button: bool = True
     show_chat_history_button: bool = True
