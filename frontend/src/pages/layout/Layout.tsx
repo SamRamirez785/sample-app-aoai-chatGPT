@@ -5,6 +5,8 @@ import { CopyRegular } from '@fluentui/react-icons'
 
 import { CosmosDBStatus } from '../../api'
 import Contoso from '../../assets/Contoso.svg'
+import WaterLogo from '../../assets/water-fee-svgrepo.svg'
+
 // import epwuLogo from '../../assets/epwuLogo.svg'
 
 import { HistoryButton, ShareButton } from '../../components/common/Button'
@@ -44,7 +46,7 @@ const Layout = () => {
 
   useEffect(() => {
     if (!appStateContext?.state.isLoading) {
-      setLogo(ui?.logo || Contoso)
+      setLogo(ui?.logo || WaterLogo)
     }
   }, [appStateContext?.state.isLoading])
 
