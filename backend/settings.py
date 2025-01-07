@@ -43,10 +43,10 @@ class _UiSettings(BaseSettings):
 
     title: str = "H2Know"
     logo: str = "/water.ico"
-    chat_logo: str = "/water.svg"
+    chat_logo: str = "/water.ico"
     chat_title: str = "Start Chatting with H2Know"
     chat_description: str = "This HR assistant is configured to answer your questions relating to any policy"
-    favicon: str = "/water.svg"
+    favicon: str = "/water.ico"
     show_share_button: bool = True
     show_chat_history_button: bool = True
 

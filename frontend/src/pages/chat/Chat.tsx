@@ -111,6 +111,7 @@ const Chat = () => {
   useEffect(() => {
     if (!appStateContext?.state.isLoading) {
       setLogo(ui?.chat_logo || ui?.logo || WaterLogo)
+      // setLogo(WaterLogo)
     }
   }, [appStateContext?.state.isLoading])
 
