@@ -13,7 +13,7 @@ import { nord } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 import styles from './Chat.module.css'
 import Contoso from '../../assets/Contoso.svg'
-import WaterLogo from '../../assets/water.ico'
+import WaterLogo from '../../assets/EPWaterLogo.ico'
 
 import { XSSAllowTags } from '../../constants/sanatizeAllowables'
 
