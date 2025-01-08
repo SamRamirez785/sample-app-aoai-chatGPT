@@ -42,11 +42,11 @@ class _UiSettings(BaseSettings):
     )
 
     title: str = "H2Know"
-    logo: str = "/EPWaterLogo.ico"
-    chat_logo: str = "/EPWaterLogo.ico"
+    logo: str = "/EPWaterLogo1.ico"
+    chat_logo: str = "/EPWaterLogo1.ico"
     chat_title: str = "Start Chatting with H2Know"
     chat_description: str = "This HR assistant is configured to answer your questions relating to any policy"
-    favicon: str = "/EPWaterLogo.ico"
+    favicon: str = "/EPWaterLogo1.ico"
     show_share_button: bool = True
     show_chat_history_button: bool = True
 
