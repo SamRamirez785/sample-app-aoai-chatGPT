@@ -36,7 +36,7 @@ jobs:
         id: changed-logo-files
         with:
           files: |
-             frontend/public/EPWaterLogo.ico
+             frontend/public/EPWaterLogo1.ico
              frontend/src/assets
 
       - name: Comment on logo customizations
