@@ -68,9 +68,9 @@ async def index():
     )
 
 
-@bp.route("/water.ico")
+@bp.route("/EPWaterLogo.ico")
 async def favicon():
-    return await bp.send_static_file("water.ico")
+    return await bp.send_static_file("EPWaterLogo.ico")
 
 
 @bp.route("/assets/<path:path>")
