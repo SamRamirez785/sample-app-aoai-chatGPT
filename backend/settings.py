@@ -118,7 +118,7 @@ class _AzureOpenAISettings(BaseSettings):
     logit_bias: Optional[dict] = None
     presence_penalty: Optional[confloat(ge=-2.0, le=2.0)] = 0.0
     frequency_penalty: Optional[confloat(ge=-2.0, le=2.0)] = 0.0
-    system_message: str = "You are an AI assistant that helps people find information."
+    system_message: str = "You're an assistant that provides information related to hr policies and procedures"
     preview_api_version: str = MINIMUM_SUPPORTED_AZURE_OPENAI_PREVIEW_API_VERSION
     embedding_endpoint: Optional[str] = None
     embedding_key: Optional[str] = None
@@ -209,7 +209,7 @@ class _SearchCommonSettings(BaseSettings):
     include_contexts: Optional[List[str]] = ["citations", "intent"]
     vectorization_dimensions: Optional[int] = None
     role_information: str = Field(
-        default="You are an AI assistant that helps people find information.",
+        default="You're an assistant that provides information related to hr policies and procedures",
         validation_alias="AZURE_OPENAI_SYSTEM_MESSAGE"
     )
 
