@@ -41,10 +41,10 @@ class _UiSettings(BaseSettings):
         env_ignore_empty=True
     )
 
-    title: str = "H2Know"
+    title: str = "Water AI"
     logo: str = "/EPWaterLogo1.ico"
     chat_logo: str = "/EPWaterLogo1.ico"
-    chat_title: str = "Start Chatting with H2Know"
+    chat_title: str = "Start Chatting with Water AI"
     chat_description: str = "This HR assistant is configured to answer your questions regarding policy"
     favicon: str = "/EPWaterLogo1.ico"
     show_share_button: bool = True
