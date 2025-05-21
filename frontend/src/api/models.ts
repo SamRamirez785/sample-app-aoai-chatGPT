@@ -14,6 +14,7 @@ export type Citation = {
   id: string
   title: string | null
   filepath: string | null
+  path?: string | null
   url: string | null
   metadata: string | null
   chunk_id: string | null
