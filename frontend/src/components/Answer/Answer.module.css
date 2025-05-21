@@ -201,3 +201,13 @@ sup {
     margin-bottom: 5px;
   }
 }
+
+.citationLink {
+  margin-left: 4px;
+  color: #115ea3;
+}
+
+.citationLink:hover {
+  text-decoration: underline;
+  cursor: pointer;
+}

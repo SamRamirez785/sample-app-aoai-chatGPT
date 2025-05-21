@@ -365,6 +365,15 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
                   aria-label={createCitationFilepath(citation, idx)}>
                   <div className={styles.citation}>{idx}</div>
                   {createCitationFilepath(citation, idx, true)}
+                  {(citation.url || citation.path) && (
+                    <a
+                      className={styles.citationLink}
+                      href={citation.url ?? citation.path ?? undefined}
+                      target="_blank"
+                      onClick={e => e.stopPropagation()}>
+                      Source
+                    </a>
+                  )}
                 </span>
               )
             })}
