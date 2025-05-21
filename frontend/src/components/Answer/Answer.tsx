@@ -369,6 +369,7 @@ export const Answer = ({ answer, onCitationClicked, onExectResultClicked }: Prop
                     <a
                       className={styles.citationLink}
                       href={citation.url ?? citation.path ?? undefined}
+                      title={citation.url ?? citation.path ?? undefined}
                       target="_blank"
                       onClick={e => e.stopPropagation()}>
                       Source

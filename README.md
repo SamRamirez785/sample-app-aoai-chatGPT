@@ -395,16 +395,23 @@ Now, you should be able to see logs from your app by viewing "Log stream" under 
 The Citation panel is defined at the end of `frontend/src/pages/chat/Chat.tsx`. The citations returned from Azure OpenAI On Your Data will include `content`, `title`, `filepath`, `path`, and in some cases `url`. You can customize the Citation section to use and display these as you like. For example, the title element is a clickable hyperlink if `url` is not a blob URL.
 
 ```
-    <h5 
-        className={styles.citationPanelTitle} 
-        tabIndex={0} 
-        title={activeCitation.url && !activeCitation.url.includes("blob.core") ? activeCitation.url : activeCitation.title ?? ""} 
+    <h5
+        className={styles.citationPanelTitle}
+        tabIndex={0}
+        title={
+            activeCitation.url && !activeCitation.url.includes("blob.core")
+                ? activeCitation.url
+                : activeCitation.path && !activeCitation.path.includes("blob.core")
+                    ? activeCitation.path
+                    : activeCitation.title ?? ""
+        }
         onClick={() => onViewSource(activeCitation)}
     >{activeCitation.title}</h5>
 
     const onViewSource = (citation: Citation) => {
-        if (citation.url && !citation.url.includes("blob.core")) {
-            window.open(citation.url, "_blank");
+        const link = citation.url ?? citation.path ?? null;
+        if (link && !link.includes("blob.core")) {
+            window.open(link, "_blank");
         }
     };
 

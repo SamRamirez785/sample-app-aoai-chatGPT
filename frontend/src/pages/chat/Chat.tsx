@@ -713,8 +713,9 @@ const Chat = () => {
   }
 
   const onViewSource = (citation: Citation) => {
-    if (citation.url && !citation.url.includes('blob.core')) {
-      window.open(citation.url, '_blank')
+    const link = citation.url ?? citation.path ?? null
+    if (link && !link.includes('blob.core')) {
+      window.open(link, '_blank')
     }
   }
 
@@ -972,7 +973,9 @@ const Chat = () => {
                 title={
                   activeCitation.url && !activeCitation.url.includes('blob.core')
                     ? activeCitation.url
-                    : activeCitation.title ?? ''
+                    : activeCitation.path && !activeCitation.path.includes('blob.core')
+                      ? activeCitation.path
+                      : activeCitation.title ?? ''
                 }
                 onClick={() => onViewSource(activeCitation)}>
                 {activeCitation.title}
