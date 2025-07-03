@@ -41,11 +41,11 @@ class _UiSettings(BaseSettings):
         env_ignore_empty=True
     )
 
-    title: str = "H2Know"
+    title: str = "EPW Finance Assistant"
     logo: str = "/EPWaterLogo1.ico"
     chat_logo: str = "/EPWaterLogo1.ico"
-    chat_title: str = "Start Chatting with H2Know"
-    chat_description: str = "This HR assistant is configured to answer your questions regarding policy"
+    chat_title: str = "Start Chatting with EPW Finance Assistant"
+    chat_description: str = "This finance assistant is configured to help you understand reports, budgets, and financial data at El Paso Water."
     favicon: str = "/EPWaterLogo1.ico"
     show_share_button: bool = True
     show_chat_history_button: bool = True
