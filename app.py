@@ -103,7 +103,7 @@ frontend_settings = {
         "show_chat_history_button": app_settings.ui.show_chat_history_button,
     },
     "sanitize_answer": app_settings.base_settings.sanitize_answer,
-    "oyd_enabled": app_settings.base_settings.datasource_type,
+    "oyd_enabled": len(app_settings.datasources) > 0,
 }
 
 
@@ -209,7 +209,7 @@ async def init_cosmosdb_client():
 def prepare_model_args(request_body, request_headers):
     request_messages = request_body.get("messages", [])
     messages = []
-    if not app_settings.datasource:
+    if not app_settings.datasources:
         messages = [
             {
                 "role": "system",
@@ -254,12 +254,11 @@ def prepare_model_args(request_body, request_headers):
         "user": user_json
     }
 
-    if app_settings.datasource:
+    if app_settings.datasources:
         model_args["extra_body"] = {
             "data_sources": [
-                app_settings.datasource.construct_payload_configuration(
-                    request=request
-                )
+                ds.construct_payload_configuration(request=request)
+                for ds in app_settings.datasources
             ]
         }
 
@@ -272,30 +271,20 @@ def prepare_model_args(request_body, request_headers):
             "encoded_api_key",
             "api_key",
         ]
-        for secret_param in secret_params:
-            if model_args_clean["extra_body"]["data_sources"][0]["parameters"].get(
-                secret_param
-            ):
-                model_args_clean["extra_body"]["data_sources"][0]["parameters"][
-                    secret_param
-                ] = "*****"
-        authentication = model_args_clean["extra_body"]["data_sources"][0][
-            "parameters"
-        ].get("authentication", {})
-        for field in authentication:
-            if field in secret_params:
-                model_args_clean["extra_body"]["data_sources"][0]["parameters"][
-                    "authentication"
-                ][field] = "*****"
-        embeddingDependency = model_args_clean["extra_body"]["data_sources"][0][
-            "parameters"
-        ].get("embedding_dependency", {})
-        if "authentication" in embeddingDependency:
-            for field in embeddingDependency["authentication"]:
+        for ds in model_args_clean["extra_body"].get("data_sources", []):
+            params = ds.get("parameters", {})
+            for secret_param in secret_params:
+                if params.get(secret_param):
+                    params[secret_param] = "*****"
+            authentication = params.get("authentication", {})
+            for field in authentication:
                 if field in secret_params:
-                    model_args_clean["extra_body"]["data_sources"][0]["parameters"][
-                        "embedding_dependency"
-                    ]["authentication"][field] = "*****"
+                    authentication[field] = "*****"
+            embeddingDependency = params.get("embedding_dependency", {})
+            if "authentication" in embeddingDependency:
+                for field in embeddingDependency["authentication"]:
+                    if field in secret_params:
+                        embeddingDependency["authentication"][field] = "*****"
 
     logging.debug(f"REQUEST BODY: {json.dumps(model_args_clean, indent=4)}")
 
