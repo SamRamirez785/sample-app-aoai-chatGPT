@@ -20,6 +20,7 @@ from typing import List, Literal, Optional
 from typing_extensions import Self
 from quart import Request
 from backend.utils import parse_multi_columns, generateFilterString
+from dotenv import dotenv_values
 
 DOTENV_PATH = os.environ.get(
     "DOTENV_PATH",
@@ -766,7 +767,7 @@ class _AppSettings(BaseModel):
     
     # Constructed properties
     chat_history: Optional[_ChatHistorySettings] = None
-    datasource: Optional[DatasourcePayloadConstructor] = None
+    datasources: List[DatasourcePayloadConstructor] = Field(default_factory=list)
     promptflow: Optional[_PromptflowSettings] = None
 
     @model_validator(mode="after")
@@ -791,44 +792,66 @@ class _AppSettings(BaseModel):
     
     @model_validator(mode="after")
     def set_datasource_settings(self) -> Self:
+        datasources: List[DatasourcePayloadConstructor] = []
+        raw_datasources = os.environ.get("DATASOURCES")
+        if not raw_datasources:
+            raw_datasources = dotenv_values(DOTENV_PATH).get("DATASOURCES")
+
         try:
-            if self.base_settings.datasource_type == "AzureCognitiveSearch":
-                self.datasource = _AzureSearchSettings(settings=self, _env_file=DOTENV_PATH)
-                logging.debug("Using Azure Cognitive Search")
-            
-            elif self.base_settings.datasource_type == "AzureCosmosDB":
-                self.datasource = _AzureCosmosDbMongoVcoreSettings(settings=self, _env_file=DOTENV_PATH)
-                logging.debug("Using Azure CosmosDB Mongo vcore")
-            
-            elif self.base_settings.datasource_type == "Elasticsearch":
-                self.datasource = _ElasticsearchSettings(settings=self, _env_file=DOTENV_PATH)
-                logging.debug("Using Elasticsearch")
-            
-            elif self.base_settings.datasource_type == "Pinecone":
-                self.datasource = _PineconeSettings(settings=self, _env_file=DOTENV_PATH)
-                logging.debug("Using Pinecone")
-            
-            elif self.base_settings.datasource_type == "AzureMLIndex":
-                self.datasource = _AzureMLIndexSettings(settings=self, _env_file=DOTENV_PATH)
-                logging.debug("Using Azure ML Index")
-            
-            elif self.base_settings.datasource_type == "AzureSqlServer":
-                self.datasource = _AzureSqlServerSettings(settings=self, _env_file=DOTENV_PATH)
-                logging.debug("Using SQL Server")
-            
-            elif self.base_settings.datasource_type == "MongoDB":
-                self.datasource = _MongoDbSettings(settings=self, _env_file=DOTENV_PATH)
-                logging.debug("Using Mongo DB")
-                
+            if raw_datasources:
+                try:
+                    datasource_configs = json.loads(raw_datasources)
+                    if not isinstance(datasource_configs, list):
+                        raise ValueError("DATASOURCES must be a JSON array")
+                except json.JSONDecodeError:
+                    logging.warning("No valid DATASOURCES definition found in the environment")
+                    datasource_configs = []
+            elif self.base_settings.datasource_type:
+                datasource_configs = [{"type": self.base_settings.datasource_type}]
             else:
-                self.datasource = None
-                logging.warning("No datasource configuration found in the environment -- calls will be made to Azure OpenAI without grounding data.")
-                
+                datasource_configs = []
+
+            for ds in datasource_configs:
+                ds_type = ds.get("type")
+                ds_kwargs = {k: v for k, v in ds.items() if k != "type"}
+                try:
+                    if ds_type == "AzureCognitiveSearch":
+                        datasource = _AzureSearchSettings(settings=self, _env_file=DOTENV_PATH, **ds_kwargs)
+                        logging.debug("Using Azure Cognitive Search")
+                    elif ds_type == "AzureCosmosDB":
+                        datasource = _AzureCosmosDbMongoVcoreSettings(settings=self, _env_file=DOTENV_PATH, **ds_kwargs)
+                        logging.debug("Using Azure CosmosDB Mongo vcore")
+                    elif ds_type == "Elasticsearch":
+                        datasource = _ElasticsearchSettings(settings=self, _env_file=DOTENV_PATH, **ds_kwargs)
+                        logging.debug("Using Elasticsearch")
+                    elif ds_type == "Pinecone":
+                        datasource = _PineconeSettings(settings=self, _env_file=DOTENV_PATH, **ds_kwargs)
+                        logging.debug("Using Pinecone")
+                    elif ds_type == "AzureMLIndex":
+                        datasource = _AzureMLIndexSettings(settings=self, _env_file=DOTENV_PATH, **ds_kwargs)
+                        logging.debug("Using Azure ML Index")
+                    elif ds_type == "AzureSqlServer":
+                        datasource = _AzureSqlServerSettings(settings=self, _env_file=DOTENV_PATH, **ds_kwargs)
+                        logging.debug("Using SQL Server")
+                    elif ds_type == "MongoDB":
+                        datasource = _MongoDbSettings(settings=self, _env_file=DOTENV_PATH, **ds_kwargs)
+                        logging.debug("Using Mongo DB")
+                    else:
+                        logging.warning(f"Unknown datasource type: {ds_type}")
+                        datasource = None
+
+                    if datasource:
+                        datasources.append(datasource)
+                except ValidationError as e:
+                    logging.warning("No datasource configuration found in the environment -- calls will be made to Azure OpenAI without grounding data.")
+                    logging.warning(e.errors())
+
+            self.datasources = datasources
             return self
 
-        except ValidationError as e:
+        except Exception as e:
             logging.warning("No datasource configuration found in the environment -- calls will be made to Azure OpenAI without grounding data.")
-            logging.warning(e.errors())
+            logging.warning(str(e))
 
 
 app_settings = _AppSettings()

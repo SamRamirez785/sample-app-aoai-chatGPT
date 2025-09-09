@@ -89,6 +89,8 @@ def dotenv_rendered_template_path(
 
     if datasource != "none":
         dotenv_template_params["DATASOURCE_TYPE"] = datasource
+    else:
+        dotenv_template_params.pop("DATASOURCE_TYPE", None)
     
     if datasource != "Elasticsearch" and use_elasticsearch_embeddings:
         pytest.skip("Elasticsearch embeddings not supported for test.")
@@ -128,12 +130,11 @@ def test_app(dotenv_rendered_template_path) -> Quart:
 
 @pytest.mark.asyncio
 async def test_dotenv(test_app: Quart, dotenv_template_params: dict[str, str]):
-    if dotenv_template_params["DATASOURCE_TYPE"] == "AzureCognitiveSearch":
+    ds_type = dotenv_template_params.get("DATASOURCE_TYPE")
+    if ds_type == "AzureCognitiveSearch":
         message_content = dotenv_template_params["AZURE_SEARCH_QUERY"]
-        
-    elif dotenv_template_params["DATASOURCE_TYPE"] == "Elasticsearch":
+    elif ds_type == "Elasticsearch":
         message_content = dotenv_template_params["ELASTICSEARCH_QUERY"]
-        
     else:
         message_content = "What is Contoso?"
         
