@@ -27,7 +27,7 @@ async def format_as_ndjson(r):
         async for event in r:
             yield json.dumps(event, cls=JSONEncoder) + "\n"
     except Exception as error:
-        logging.exception("Exception while generating response stream: %s", error)
+        logging.error("Response stream failed (%s)", type(error).__name__)
         yield json.dumps({"error": str(error)})
 
 
@@ -39,43 +39,43 @@ def parse_multi_columns(columns: str) -> list:
 
 
 def fetchUserGroups(userToken, nextLink=None):
-    # Recursively fetch group membership
-    if nextLink:
-        endpoint = nextLink
-    else:
-        endpoint = "https://graph.microsoft.com/v1.0/me/transitiveMemberOf?$select=id"
-
-    headers = {"Authorization": "bearer " + userToken}
-    try:
-        r = requests.get(endpoint, headers=headers)
-        if r.status_code != 200:
-            logging.error(f"Error fetching user groups: {r.status_code} {r.text}")
-            return []
-
-        r = r.json()
-        if "@odata.nextLink" in r:
-            nextLinkData = fetchUserGroups(userToken, r["@odata.nextLink"])
-            r["value"].extend(nextLinkData)
-
-        return r["value"]
-    except Exception as e:
-        logging.error(f"Exception in fetchUserGroups: {e}")
-        return []
+    # Fail closed on Graph errors, including any later page of group membership.
+    from urllib.parse import urlsplit
+    endpoint = nextLink or "https://graph.microsoft.com/v1.0/me/transitiveMemberOf?$select=id"
+    groups = []
+    visited = set()
+    while endpoint:
+        parsed = urlsplit(endpoint)
+        if parsed.scheme != "https" or parsed.netloc != "graph.microsoft.com" or endpoint in visited:
+            raise PermissionError("Invalid group membership response")
+        visited.add(endpoint)
+        try:
+            response = requests.get(endpoint, headers={"Authorization": "Bearer " + userToken}, timeout=15)
+            if response.status_code != 200:
+                raise PermissionError("Unable to verify document access groups")
+            page = response.json()
+            groups.extend(page["value"])
+            endpoint = page.get("@odata.nextLink")
+        except (requests.RequestException, ValueError, KeyError):
+            raise PermissionError("Unable to verify document access groups") from None
+    return groups
 
 
-def generateFilterString(userToken):
-    # Get list of groups user is a member of
-    userGroups = fetchUserGroups(userToken)
+def generateFilterString(userToken, column=None):
+    import re
+    column = column or AZURE_SEARCH_PERMITTED_GROUPS_COLUMN
+    if not column or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*)*", column):
+        raise ValueError("Invalid permitted groups column")
+    groups = fetchUserGroups(userToken)
+    ids = [obj["id"] for obj in groups]
+    if any(not re.fullmatch(r"[0-9a-fA-F-]{36}", value) for value in ids):
+        raise PermissionError("Invalid group identifier")
+    if not ids:
+        return "false"
+    return f"{column}/any(g:search.in(g, '{','.join(ids)}', ','))"
 
-    # Construct filter string
-    if not userGroups:
-        logging.debug("No user groups found")
 
-    group_ids = ", ".join([obj["id"] for obj in userGroups])
-    return f"{AZURE_SEARCH_PERMITTED_GROUPS_COLUMN}/any(g:search.in(g, '{group_ids}'))"
-
-
-def format_non_streaming_response(chatCompletion, history_metadata, apim_request_id):
+def format_non_streaming_response(chatCompletion, history_metadata, apim_request_id, context=None):
     response_obj = {
         "id": chatCompletion.id,
         "model": chatCompletion.model,
@@ -86,6 +86,8 @@ def format_non_streaming_response(chatCompletion, history_metadata, apim_request
         "apim-request-id": apim_request_id,
     }
 
+    if context is not None:
+        response_obj["choices"][0]["messages"].append({"role": "tool", "content": json.dumps(context)})
     if len(chatCompletion.choices) > 0:
         message = chatCompletion.choices[0].message
         if message:
@@ -106,7 +108,7 @@ def format_non_streaming_response(chatCompletion, history_metadata, apim_request
 
     return {}
 
-def format_stream_response(chatCompletionChunk, history_metadata, apim_request_id):
+def format_stream_response(chatCompletionChunk, history_metadata, apim_request_id, context=None):
     response_obj = {
         "id": chatCompletionChunk.id,
         "model": chatCompletionChunk.model,
@@ -117,6 +119,8 @@ def format_stream_response(chatCompletionChunk, history_metadata, apim_request_i
         "apim-request-id": apim_request_id,
     }
 
+    if context is not None:
+        response_obj["choices"][0]["messages"].append({"role": "tool", "content": json.dumps(context)})
     if len(chatCompletionChunk.choices) > 0:
         delta = chatCompletionChunk.choices[0].delta
         if delta:
@@ -140,7 +144,7 @@ def format_stream_response(chatCompletionChunk, history_metadata, apim_request_i
                     response_obj["choices"][0]["messages"].append(messageObj)
                     return response_obj
 
-    return {}
+    return response_obj if context is not None else {}
 
 
 def format_pf_non_streaming_response(

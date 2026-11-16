@@ -2,6 +2,92 @@
 
 This repo contains sample code for a simple chat webapp that integrates with Azure OpenAI. Note: some portions of the app use preview APIs.
 
+## Azure AI Search RAG migration
+
+The chat backend now queries Azure AI Search directly and sends standard chat
+completion messages to Azure OpenAI. It no longer sends the retired On Your Data
+`data_sources` extension. No frontend changes are required. Retrieved passages are
+numbered, supplied as untrusted reference data, and returned as the existing
+`tool` message containing `citations` and `intent`. Answers cite `[doc1]`, etc.
+Streaming sends the citation context once, followed by assistant text deltas;
+non-streaming returns the same context alongside the assistant answer. Conversation
+history and the configured system prompt are retained; old citation metadata is
+not sent as unsupported OpenAI message fields. Cosmos DB history routes are unchanged.
+
+### Configuration to review before deploying
+
+No Azure resources or production settings are changed by this migration.
+
+- Keep `DATASOURCE_TYPE=AzureCognitiveSearch`, `AZURE_SEARCH_SERVICE`,
+  `AZURE_SEARCH_INDEX`, and the existing content/title/URL/filename column mappings.
+  `AZURE_SEARCH_CONTENT_COLUMNS` defaults to `content` if omitted; mapped content
+  fields must be retrievable strings. Multiple columns accept comma or pipe separators.
+- `AZURE_SEARCH_KEY` still enables API-key authentication. Without it, the application
+  uses `DefaultAzureCredential` (managed identity in Azure). The **application identity**
+  now needs **Search Index Data Reader**, plus network access to the Search endpoint.
+  Previously, access might have been granted only to the Azure OpenAI resource identity.
+  Keep Entra/Easy Auth enabled and ensure requests cannot bypass its trusted proxy.
+- Keep `AZURE_SEARCH_QUERY_TYPE`: `simple`, `semantic`, `vector`,
+  `vector_simple_hybrid`, or `vector_semantic_hybrid` (legacy camelCase aliases remain).
+  `AZURE_SEARCH_USE_SEMANTIC_SEARCH=true` upgrades `simple` to `semantic`.
+  Semantic modes require `AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG` and an existing semantic
+  configuration on the index. Vector modes require `AZURE_SEARCH_VECTOR_COLUMNS`
+  and `AZURE_OPENAI_EMBEDDING_NAME`, using the existing OpenAI endpoint/key or Entra
+  authentication. Alternatively, the existing full HTTPS
+  `AZURE_OPENAI_EMBEDDING_ENDPOINT` and optional `AZURE_OPENAI_EMBEDDING_KEY` are supported.
+  The embedding model and `SEARCH_VECTORIZATION_DIMENSIONS`, if set, must match indexed
+  vectors. The application identity needs **Cognitive Services OpenAI User** for Entra
+  generation/embedding calls. There is no fallback from vector/hybrid to text search.
+- `AZURE_SEARCH_PERMITTED_GROUPS_COLUMN` continues to apply group membership filters.
+  The field must be a filterable collection of Entra group IDs. Easy Auth must forward
+  a delegated Microsoft Graph access token in `X-MS-TOKEN-AAD-ACCESS-TOKEN` with
+  permission to read transitive group membership. Missing tokens, Graph failures,
+  and invalid group IDs fail closed; no groups produces a `false` filter. Every vector
+  query uses pre-filtering. `AZURE_SEARCH_FILTER`, if set by the server, is combined
+  with the access filter; client-supplied filter parameters are ignored.
+- `AZURE_SEARCH_TOP_K` controls returned passages (1?50, default 5).
+  `AZURE_SEARCH_MAX_DOCUMENT_CHARACTERS` bounds each passage (default 12000).
+  Tune these to the deployment's context window. Full retrieved text is not logged.
+- `AZURE_OPENAI_PREVIEW_API_VERSION` and the model deployment are **unchanged**.
+  Deployment/model compatibility cannot be established without Azure access; verify
+  the configured version supports your chat and embedding deployments before rollout.
+
+### Remaining differences and validation
+
+Retrieval uses the latest user question; history is preserved for generation but
+there is no automatic query rewriting for ambiguous follow-ups. On Your Data's
+`strictness`, `SEARCH_MAX_SEARCH_QUERIES`, `SEARCH_ALLOW_PARTIAL_RESULT`, and
+`SEARCH_INCLUDE_CONTEXTS` orchestration settings have no direct equivalent here
+and are not applied. `AZURE_SEARCH_ENABLE_IN_DOMAIN` adds a grounding-only instruction;
+it is not a deterministic relevance threshold. Citation numbering is prompted,
+so answer quality and citation accuracy still require evaluation on your documents.
+Retrieved instructions are explicitly distrusted, but prompt injection defenses
+cannot guarantee model behavior. Empty results ask the model to report insufficient
+document evidence when in-domain mode is enabled.
+
+Other legacy providers (Cosmos DB Mongo vCore, Elasticsearch, Pinecone, Azure ML
+Index, SQL Server, MongoDB) require separate application-managed retrievers and now
+raise an explicit migration error rather than silently losing retrieval. This does
+not affect Cosmos DB **conversation history** or the separate Prompt Flow path.
+
+Install `requirements.txt`, then run credential-free regression tests with:
+
+```sh
+python -m pip install pytest pytest-asyncio
+python -m pytest tests/unit_tests -q
+```
+
+Before rollout, verify real indexed answers and citations in both streaming modes,
+managed identity/API-key access, allowed and denied users (including group changes),
+semantic/vector ranking, and Cosmos DB save/reload. These Azure integration checks
+require your configured deployments, index, identity permissions, and credentials.
+
+References: [Azure AI Search vector queries](https://learn.microsoft.com/azure/search/vector-search-how-to-query),
+[security trimming](https://learn.microsoft.com/azure/search/search-security-trimming-for-azure-search),
+and [On Your Data retirement](https://learn.microsoft.com/azure/ai-foundry/openai/concepts/use-your-data).
+The older On Your Data setup sections below are retained as historical configuration
+reference; they do not describe the new application's retrieval execution path.
+
 ## Prerequisites
 - An existing Azure OpenAI resource and model deployment of a chat model (e.g. `gpt-35-turbo-16k`, `gpt-4`)
 - To use Azure OpenAI on your data, one of the following data sources:

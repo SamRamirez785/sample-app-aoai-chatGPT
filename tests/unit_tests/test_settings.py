@@ -30,10 +30,13 @@ def test_dotenv_no_datasource_1(app_settings):
     assert app_settings.azure_openai is not None
     
     
-def test_dotenv_no_datasource_2(app_settings):    
-    # Validate model object
-    assert app_settings.datasource is None
-    assert app_settings.azure_openai is not None
+def test_dotenv_no_datasource_2(dotenv_path, monkeypatch):
+    # A selected but incomplete Search configuration must fail closed.
+    from pydantic import ValidationError
+    monkeypatch.setenv("DOTENV_PATH", dotenv_path)
+    settings_module = import_module("backend.settings")
+    with pytest.raises(ValidationError, match="Invalid datasource configuration"):
+        reload(settings_module)
 
     
 def test_dotenv_with_azure_search_success(app_settings):

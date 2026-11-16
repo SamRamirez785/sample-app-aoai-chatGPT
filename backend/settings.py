@@ -161,13 +161,13 @@ class _AzureOpenAISettings(BaseSettings):
     @model_validator(mode="after")
     def ensure_endpoint(self) -> Self:
         if self.endpoint:
-            return Self
+            return self
         
         elif self.resource:
             self.endpoint = f"https://{self.resource}.openai.azure.com"
-            return Self
+            return self
         
-        raise ValidationError("AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_RESOURCE is required")
+        raise ValueError("AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_RESOURCE is required")
         
     def extract_embedding_dependency(self) -> Optional[dict]:
         if self.embedding_name:
@@ -246,7 +246,8 @@ class _AzureSearchSettings(BaseSettings, DatasourcePayloadConstructor):
         env_ignore_empty=True
     )
     _type: Literal["azure_search"] = PrivateAttr(default="azure_search")
-    top_k: int = Field(default=5, serialization_alias="top_n_documents")
+    top_k: int = Field(default=5, ge=1, le=50, serialization_alias="top_n_documents")
+    max_document_characters: int = Field(default=12000, ge=1, le=100000, exclude=True)
     strictness: int = 3
     enable_in_domain: bool = Field(default=True, serialization_alias="in_scope")
     service: str = Field(exclude=True)
@@ -314,6 +315,7 @@ class _AzureSearchSettings(BaseSettings, DatasourcePayloadConstructor):
     @model_validator(mode="after")
     def set_query_type(self) -> Self:
         self.query_type = to_snake(self.query_type)
+        return self
 
     def _set_filter_string(self, request: Request) -> str:
         if self.permitted_groups_column:
@@ -324,7 +326,7 @@ class _AzureSearchSettings(BaseSettings, DatasourcePayloadConstructor):
                     "Document-level access control is enabled, but user access token could not be fetched."
                 )
 
-            filter_string = generateFilterString(user_token)
+            filter_string = generateFilterString(user_token, self.permitted_groups_column)
             logging.debug(f"FILTER: {filter_string}")
             return filter_string
         
@@ -826,9 +828,9 @@ class _AppSettings(BaseModel):
                 
             return self
 
-        except ValidationError as e:
-            logging.warning("No datasource configuration found in the environment -- calls will be made to Azure OpenAI without grounding data.")
-            logging.warning(e.errors())
+        except ValidationError:
+            # A configured but invalid datasource must never become ungrounded chat.
+            raise ValueError("Invalid datasource configuration; check required datasource settings") from None
 
 
 app_settings = _AppSettings()

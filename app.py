@@ -1,4 +1,3 @@
-import copy
 import json
 import os
 import logging
@@ -21,6 +20,7 @@ from azure.identity.aio import (
     DefaultAzureCredential,
     get_bearer_token_provider
 )
+from backend.retrieval import retrieve_documents, grounding_messages
 from backend.auth.auth_utils import get_authenticated_user_details
 from backend.security.ms_defender_utils import get_msdefender_user_json
 from backend.history.cosmosdbservice import CosmosConversationClient
@@ -82,6 +82,10 @@ async def assets(path):
 DEBUG = os.environ.get("DEBUG", "false")
 if DEBUG.lower() == "true":
     logging.basicConfig(level=logging.DEBUG)
+
+# SDK debug traces can contain full prompts and retrieved passages.
+for sdk_logger in ("openai", "httpx", "httpcore", "azure"):
+    logging.getLogger(sdk_logger).setLevel(logging.WARNING)
 
 USER_AGENT = "GitHubSampleWebApp/AsyncAzureOpenAI/1.0.0"
 
@@ -145,11 +149,10 @@ async def init_openai_client():
         ad_token_provider = None
         if not aoai_api_key:
             logging.debug("No AZURE_OPENAI_KEY found, using Azure Entra ID auth")
-            async with DefaultAzureCredential() as credential:
-                ad_token_provider = get_bearer_token_provider(
-                    credential,
-                    "https://cognitiveservices.azure.com/.default"
-                )
+            credential = DefaultAzureCredential()
+            ad_token_provider = get_bearer_token_provider(
+                credential, "https://cognitiveservices.azure.com/.default"
+            )
 
         # Deployment
         deployment = app_settings.azure_openai.model
@@ -167,6 +170,7 @@ async def init_openai_client():
             azure_endpoint=endpoint,
         )
 
+        azure_openai_client._app_credential = credential if not aoai_api_key else None
         return azure_openai_client
     except Exception as e:
         logging.exception("Exception in Azure OpenAI initialization", e)
@@ -208,33 +212,13 @@ async def init_cosmosdb_client():
 
 def prepare_model_args(request_body, request_headers):
     request_messages = request_body.get("messages", [])
-    messages = []
-    if not app_settings.datasource:
-        messages = [
-            {
-                "role": "system",
-                "content": app_settings.azure_openai.system_message
-            }
-        ]
-
+    messages = [{"role": "system", "content": app_settings.azure_openai.system_message}]
     for message in request_messages:
-        if message:
-            if message["role"] == "assistant" and "context" in message:
-                context_obj = json.loads(message["context"])
-                messages.append(
-                    {
-                        "role": message["role"],
-                        "content": message["content"],
-                        "context": context_obj
-                    }
-                )
-            else:
-                messages.append(
-                    {
-                        "role": message["role"],
-                        "content": message["content"]
-                    }
-                )
+        # Legacy tool/context messages are frontend citation metadata, not API tool calls.
+        if message and message.get("role") in ("user", "assistant"):
+            if not isinstance(message.get("content"), str):
+                raise ValueError("Chat message content must be text")
+            messages.append({"role": message["role"], "content": message["content"]})
 
     user_json = None
     if (MS_DEFENDER_ENABLED):
@@ -253,51 +237,6 @@ def prepare_model_args(request_body, request_headers):
         "model": app_settings.azure_openai.model,
         "user": user_json
     }
-
-    if app_settings.datasource:
-        model_args["extra_body"] = {
-            "data_sources": [
-                app_settings.datasource.construct_payload_configuration(
-                    request=request
-                )
-            ]
-        }
-
-    model_args_clean = copy.deepcopy(model_args)
-    if model_args_clean.get("extra_body"):
-        secret_params = [
-            "key",
-            "connection_string",
-            "embedding_key",
-            "encoded_api_key",
-            "api_key",
-        ]
-        for secret_param in secret_params:
-            if model_args_clean["extra_body"]["data_sources"][0]["parameters"].get(
-                secret_param
-            ):
-                model_args_clean["extra_body"]["data_sources"][0]["parameters"][
-                    secret_param
-                ] = "*****"
-        authentication = model_args_clean["extra_body"]["data_sources"][0][
-            "parameters"
-        ].get("authentication", {})
-        for field in authentication:
-            if field in secret_params:
-                model_args_clean["extra_body"]["data_sources"][0]["parameters"][
-                    "authentication"
-                ][field] = "*****"
-        embeddingDependency = model_args_clean["extra_body"]["data_sources"][0][
-            "parameters"
-        ].get("embedding_dependency", {})
-        if "authentication" in embeddingDependency:
-            for field in embeddingDependency["authentication"]:
-                if field in secret_params:
-                    model_args_clean["extra_body"]["data_sources"][0]["parameters"][
-                        "embedding_dependency"
-                    ]["authentication"][field] = "*****"
-
-    logging.debug(f"REQUEST BODY: {json.dumps(model_args_clean, indent=4)}")
 
     return model_args
 
@@ -347,14 +286,46 @@ async def send_chat_request(request_body, request_headers):
 
     try:
         azure_openai_client = await init_openai_client()
+        query = next((m["content"] for m in reversed(model_args["messages"]) if m["role"] == "user"), "")
+        if app_settings.base_settings.datasource_type and not query.strip():
+            raise ValueError("Document retrieval requires a user question")
+        context = await retrieve_documents(app_settings, request_headers, query, azure_openai_client)
+        if context is not None:
+            model_args["messages"][-1:-1] = grounding_messages(context, app_settings.datasource.enable_in_domain)
         raw_response = await azure_openai_client.chat.completions.with_raw_response.create(**model_args)
         response = raw_response.parse()
         apim_request_id = raw_response.headers.get("apim-request-id") 
     except Exception as e:
-        logging.exception("Exception in send_chat_request")
+        logging.error("Chat request failed (%s)", type(e).__name__)
+        if 'azure_openai_client' in locals():
+            await close_openai_client(azure_openai_client)
         raise e
 
-    return response, apim_request_id
+    if not model_args["stream"]:
+        await close_openai_client(azure_openai_client)
+    else:
+        response = managed_stream(response, azure_openai_client)
+    return response, apim_request_id, context
+
+
+async def close_openai_client(client):
+    try:
+        await client.close()
+    finally:
+        credential = getattr(client, "_app_credential", None)
+        if credential:
+            await credential.close()
+
+
+async def managed_stream(response, client):
+    try:
+        async for chunk in response:
+            yield chunk
+    finally:
+        try:
+            await response.close()
+        finally:
+            await close_openai_client(client)
 
 
 async def complete_chat_request(request_body, request_headers):
@@ -368,18 +339,23 @@ async def complete_chat_request(request_body, request_headers):
             app_settings.promptflow.citations_field_name
         )
     else:
-        response, apim_request_id = await send_chat_request(request_body, request_headers)
+        response, apim_request_id, context = await send_chat_request(request_body, request_headers)
         history_metadata = request_body.get("history_metadata", {})
-        return format_non_streaming_response(response, history_metadata, apim_request_id)
+        return format_non_streaming_response(response, history_metadata, apim_request_id, context)
 
 
 async def stream_chat_request(request_body, request_headers):
-    response, apim_request_id = await send_chat_request(request_body, request_headers)
+    response, apim_request_id, context = await send_chat_request(request_body, request_headers)
     history_metadata = request_body.get("history_metadata", {})
     
     async def generate():
-        async for completionChunk in response:
-            yield format_stream_response(completionChunk, history_metadata, apim_request_id)
+        pending_context = context
+        try:
+            async for completionChunk in response:
+                yield format_stream_response(completionChunk, history_metadata, apim_request_id, pending_context)
+                pending_context = None
+        finally:
+            await response.aclose()
 
     return generate()
 
@@ -397,7 +373,9 @@ async def conversation_internal(request_body, request_headers):
             return jsonify(result)
 
     except Exception as ex:
-        logging.exception(ex)
+        logging.error("Conversation request failed (%s)", type(ex).__name__)
+        if isinstance(ex, PermissionError):
+            return jsonify({"error": str(ex)}), 403
         if hasattr(ex, "status_code"):
             return jsonify({"error": str(ex)}), ex.status_code
         else:
